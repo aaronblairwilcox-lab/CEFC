@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>FIRST ALERT — Commander Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    :root {
+      --bg0: #080c14;
+      --bg1: #0f1724;
+      --bg2: #162032;
+      --bg3: #1c2a40;
+      --border: #1e3050;
+      --accent: #00d4ff;
+      --accent2: #0088bb;
+      --red: #ff3b3b;
+      --orange: #ff8c00;
+      --yellow: #ffd700;
+      --green: #00e676;
+      --purple: #b06aff;
+      --cyan: #22d3ee;
+      --text0: #e8edf5;
+      --text1: #94a3b8;
+      --text2: #4a5c72;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: var(--bg0);
+      color: var(--text0);
+      font-family: 'Courier New', Courier, monospace;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    .app { display: flex; flex-direction: column; height: 100vh; }
+
+    /* ── HEADER ── */
+    .hdr {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 14px;
+      height: 52px;
+      background: var(--bg1);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+      z-index: 600;
+      gap: 12px;
+    }
+    .hdr-left { display: flex; align-items: center; gap: 12px; }
+    .hdr-brand { display: flex; align-items: baseline; gap: 8px; }
+    .hdr-title {
+      font-size: 15px; font-weight: 700; letter-spacing: 3px;
+      color: var(--accent); text-transform: uppercase;
+    }
+    .hdr-sub { font-size: 10px; color: var(--text2); letter-spacing: 1.5px; }
+    .live-pill {
+      display: flex; align-items: center; gap: 5px;
+      background: rgba(0,230,118,.12); border: 1px solid rgba(0,230,118,.3);
+      border-radius: 3px; padding: 3px 8px;
+      font-size: 10px; letter-spacing: 1px; color: var(--green);
+    }
+    .live-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: blink 1.4s infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    .hdr-stats { display: flex; align-items: center; gap: 24px; }
+    .stat { text-align: center; }
+    .stat-n { font-size: 20px; font-weight: 700; }
+    .stat-l { font-size: 9px; color: var(--text2); letter-spacing: 1px; text-transform: uppercase; margin-top: 1px; }
+
+    .hdr-clock { font-size: 11px; color: var(--text1); letter-spacing: 1px; }
+
+    /* ── FILTER BAR ── */
+    .fbar {
+      display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
+      padding: 5px 10px;
+      background: var(--bg1);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .fbar-label { font-size: 9px; color: var(--text2); letter-spacing: 1.5px; text-transform: uppercase; margin-right: 4px; }
+    .fbtn {
+      padding: 4px 11px; font-family: 'Courier New', monospace;
+      font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+      border-radius: 2px; border: 1px solid var(--border);
+      background: transparent; color: var(--text2); cursor: pointer; transition: all .15s;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    .fbtn:active { opacity: .7; }
+    .fbtn.on { color: #000; }
+    .fbtn[data-f="naval"].on    { background: var(--red);    border-color: var(--red); }
+    .fbtn[data-f="intel"].on   { background: var(--purple); border-color: var(--purple); color: #fff; }
+    .fbtn[data-f="tanker"].on  { background: var(--orange); border-color: var(--orange); }
+    .fbtn[data-f="shadow"].on  { background: var(--yellow); border-color: var(--yellow); }
+    .fbtn[data-f="research"].on{ background: var(--cyan);   border-color: var(--cyan); }
+    .fbtn[data-f="incident"].on{ background: var(--red);    border-color: var(--red); color: #fff; }
+    .fbtn[data-f="tracks"].on  { background: var(--accent); border-color: var(--accent); }
+    .fbar-sep { width: 1px; height: 18px; background: var(--border); margin: 0 4px; }
+
+    /* ── BODY ── */
+    .body { display: flex; flex: 1; overflow: hidden; position: relative; }
+
+    /* ── SIDEBAR ── */
+    .sidebar {
+      width: 288px; flex-shrink: 0;
+      background: var(--bg1);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      overflow: hidden;
+      transition: transform .25s ease;
+    }
+    .sidebar.collapsed { transform: translateX(-100%); }
+    .sb-tabs { display: flex; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .sb-tab {
+      flex: 1; padding: 10px 0;
+      font-size: 10px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase;
+      text-align: center; cursor: pointer; color: var(--text2);
+      border-bottom: 2px solid transparent; transition: all .15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .sb-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    .sb-body { flex: 1; overflow-y: auto; padding: 8px; scroll-behavior: smooth; }
+    .sb-body::-webkit-scrollbar { width: 3px; }
+    .sb-body::-webkit-scrollbar-track { background: var(--bg0); }
+    .sb-body::-webkit-scrollbar-thumb { background: var(--border); }
+
+    /* ship card */
+    .scard {
+      border-radius: 3px; border: 1px solid var(--border); border-left: 3px solid transparent;
+      background: var(--bg2); padding: 10px; margin-bottom: 7px; cursor: pointer;
+      transition: background .15s, border-color .15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .scard:hover, .scard.sel { background: var(--bg3); border-color: var(--accent); }
+    .scard.naval  { border-left-color: var(--red); }
+    .scard.intel  { border-left-color: var(--purple); }
+    .scard.tanker { border-left-color: var(--orange); }
+    .scard.shadow { border-left-color: var(--yellow); }
+    .scard.research { border-left-color: var(--cyan); }
+
+    .scard-name { font-size: 12px; font-weight: 700; color: var(--text0); margin-bottom: 5px; }
+    .badge {
+      display: inline-block; font-size: 8px; padding: 1px 5px;
+      border-radius: 2px; letter-spacing: 1px; text-transform: uppercase; margin-bottom: 6px;
+    }
+    .badge-naval  { background: rgba(255,59,59,.18);   color: var(--red); }
+    .badge-intel  { background: rgba(176,106,255,.18); color: var(--purple); }
+    .badge-tanker { background: rgba(255,140,0,.18);   color: var(--orange); }
+    .badge-shadow { background: rgba(255,215,0,.18);   color: var(--yellow); }
+    .badge-research{ background: rgba(34,211,238,.18); color: var(--cyan); }
+    .badge-high   { background: rgba(255,59,59,.18);   color: var(--red); }
+    .badge-medium { background: rgba(255,140,0,.18);   color: var(--orange); }
+    .badge-low    { background: rgba(255,215,0,.18);   color: var(--yellow); }
+
+    .scard-meta {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px;
+      font-size: 9px; color: var(--text1); margin-bottom: 5px;
+    }
+    .ml { color: var(--text2); }
+
+    .scard-status { display: flex; align-items: center; gap: 5px; margin-top: 5px; }
+    .sdot { width: 5px; height: 5px; border-radius: 50%; }
+    .sdot.active  { background: var(--green); }
+    .sdot.anchored{ background: var(--yellow); }
+    .sdot.dark    { background: var(--red); animation: blink 1.2s infinite; }
+    .scard-status span { font-size: 9px; color: var(--text2); }
+
+    .alert-strip {
+      margin-top: 6px; padding: 3px 7px; border-radius: 2px; font-size: 9px;
+    }
+    .alert-strip.high   { background: rgba(255,59,59,.12);  color: var(--red); }
+    .alert-strip.medium { background: rgba(255,140,0,.12);  color: var(--orange); }
+
+    /* incident card */
+    .icard {
+      border-radius: 3px; border: 1px solid var(--border); border-left: 3px solid var(--red);
+      background: var(--bg2); padding: 10px; margin-bottom: 7px; cursor: pointer;
+      transition: background .15s;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .icard.medium { border-left-color: var(--orange); }
+    .icard.low    { border-left-color: var(--yellow); }
+    .icard:hover  { background: var(--bg3); }
+    .icard-title  { font-size: 11px; font-weight: 700; color: var(--text0); margin: 5px 0 3px; }
+    .icard-time   { font-size: 9px; color: var(--text2); margin-bottom: 5px; }
+    .icard-desc   { font-size: 9px; color: var(--text1); line-height: 1.55; }
+
+    /* ── MAP ── */
+    .map-wrap { flex: 1; position: relative; }
+    #map { width: 100%; height: 100%; }
+
+    /* sidebar toggle button (mobile/iPad portrait) */
+    .sb-toggle {
+      display: none;
+      position: absolute; top: 10px; left: 10px; z-index: 500;
+      width: 40px; height: 40px; border-radius: 4px;
+      background: rgba(8,12,20,.92); border: 1px solid var(--border);
+      color: var(--accent); font-size: 18px; cursor: pointer;
+      align-items: center; justify-content: center;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    /* ── STATUS BAR ── */
+    .statusbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 14px; height: 28px;
+      background: var(--bg1); border-top: 1px solid var(--border);
+      font-size: 9px; color: var(--text2); letter-spacing: .8px;
+      flex-shrink: 0;
+    }
+    .statusbar-r { display: flex; gap: 20px; }
+
+    /* ── LOADING SCREEN ── */
+    .loader {
+      position: fixed; inset: 0; z-index: 9000;
+      background: var(--bg0);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      transition: opacity .5s;
+    }
+    .loader-title { font-size: 28px; font-weight: 700; letter-spacing: 6px; color: var(--accent); }
+    .loader-sub   { font-size: 10px; letter-spacing: 3px; color: var(--text2); margin: 8px 0 32px; }
+    .loader-bar   { width: 220px; height: 2px; background: var(--border); border-radius: 1px; overflow: hidden; }
+    .loader-prog  { height: 100%; background: var(--accent); animation: prog 1.6s ease-in-out forwards; }
+    @keyframes prog { from{width:0} to{width:100%} }
+    .loader-items { margin-top: 18px; display: flex; flex-direction: column; gap: 4px; width: 220px; }
+    .loader-item  { font-size: 9px; color: var(--text2); letter-spacing: 1px; }
+    .loader-item.done { color: var(--green); }
+
+    /* ── SCAN LINE ── */
+    .scanline {
+      position: fixed; top: 0; left: 0; right: 0; height: 1px; pointer-events: none;
+      background: linear-gradient(to right, transparent 0%, var(--accent) 50%, transparent 100%);
+      opacity: .15; animation: scan 4s linear infinite; z-index: 800;
+    }
+    @keyframes scan { from{top:0} to{top:100vh} }
+
+    /* ── LEAFLET OVERRIDES ── */
+    .leaflet-container { background: #0a0e18; }
+    .leaflet-control-zoom a {
+      background: rgba(8,12,20,.92) !important;
+      border-color: #1e3050 !important;
+      color: #00d4ff !important;
+    }
+    .leaflet-control-zoom a:hover { background: #1c2a40 !important; }
+    .leaflet-control-attribution {
+      background: rgba(8,12,20,.7) !important;
+      color: #4a5c72 !important; font-size: 9px !important;
+    }
+    .leaflet-control-attribution a { color: #4a5c72 !important; }
+
+    .ship-icon, .inc-icon { background: none !important; border: none !important; }
+
+    /* custom tooltip */
+    .leaflet-tooltip.ctip {
+      background: rgba(8,12,20,.97) !important;
+      border: 1px solid #1e3050 !important;
+      border-radius: 4px !important;
+      color: #e8edf5 !important;
+      font-family: 'Courier New', Courier, monospace !important;
+      font-size: 11px !important;
+      padding: 10px 13px !important;
+      box-shadow: 0 6px 24px rgba(0,0,0,.7) !important;
+      max-width: 280px;
+      pointer-events: none;
+    }
+    .leaflet-tooltip.ctip::before { border-right-color: #1e3050 !important; }
+    .ctip-title  { font-size: 13px; font-weight: 700; color: #00d4ff; margin-bottom: 8px; }
+    .ctip-row    { display: flex; gap: 8px; margin-bottom: 3px; line-height: 1.4; }
+    .ctip-lbl    { color: #4a5c72; min-width: 78px; flex-shrink: 0; }
+    .ctip-val    { color: #e8edf5; }
+    .ctip-hr     { border: none; border-top: 1px solid #1e3050; margin: 8px 0; }
+    .ctip-desc   { font-size: 10px; color: #94a3b8; line-height: 1.5; }
+    .ctip-alert  { margin-top: 8px; padding: 4px 8px; border-radius: 2px; font-size: 10px; }
+    .ctip-alert.high   { background: rgba(255,59,59,.15);  color: #ff3b3b; }
+    .ctip-alert.medium { background: rgba(255,140,0,.15);  color: #ff8c00; }
+
+    /* pulse rings for incidents */
+    @keyframes ripple {
+      0%   { transform: scale(1);   opacity: .7; }
+      100% { transform: scale(2.6); opacity: 0; }
+    }
+    .inc-ring {
+      position: absolute; border-radius: 50%;
+      animation: ripple 2.2s ease-out infinite;
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 900px) {
+      .sidebar {
+        position: absolute; top: 0; bottom: 0; left: 0;
+        z-index: 450; transform: translateX(-100%);
+      }
+      .sidebar.open { transform: translateX(0); }
+      .sb-toggle { display: flex; }
+      .hdr-stats { display: none; }
+    }
+
+    @media (max-width: 600px) {
+      .fbar-sep { display: none; }
+      .hdr-sub  { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- LOADING -->
+<div class="loader" id="loader">
+  <div class="loader-title">FIRST ALERT</div>
+  <div class="loader-sub">COMMANDER MAP DASHBOARD</div>
+  <div class="loader-bar"><div class="loader-prog"></div></div>
+  <div class="loader-items" id="loaderItems">
+    <div class="loader-item" id="li1">▸ Initializing AIS feed...</div>
+    <div class="loader-item" id="li2">▸ Loading satellite imagery...</div>
+    <div class="loader-item" id="li3">▸ Geolocating incidents...</div>
+    <div class="loader-item" id="li4">▸ Rendering vessel tracks...</div>
+  </div>
+</div>
+
+<div class="scanline"></div>
+
+<div class="app">
+
+  <!-- HEADER -->
+  <header class="hdr">
+    <div class="hdr-left">
+      <div class="live-pill"><div class="live-dot"></div>LIVE</div>
+      <div>
+        <div class="hdr-brand">
+          <span class="hdr-title">FIRST ALERT</span>
+          <span style="font-size:10px;color:#4a5c72;letter-spacing:1px;">|</span>
+          <span style="font-size:11px;color:#94a3b8;letter-spacing:1.5px;">COMMANDER MAP</span>
+        </div>
+        <div class="hdr-sub">RUSSIAN MARITIME ACTIVITY MONITOR — UNCLASSIFIED // FOUO</div>
+      </div>
+    </div>
+
+    <div class="hdr-stats">
+      <div class="stat">
+        <div class="stat-n" style="color:#00d4ff" id="statShips">6</div>
+        <div class="stat-l">Vessels</div>
+      </div>
+      <div class="stat">
+        <div class="stat-n" style="color:#ff3b3b" id="statInc">7</div>
+        <div class="stat-l">Incidents</div>
+      </div>
+      <div class="stat">
+        <div class="stat-n" style="color:#ffd700" id="statDark">2</div>
+        <div class="stat-l">Dark Ships</div>
+      </div>
+      <div class="stat">
+        <div class="stat-n" style="color:#ff8c00" id="statHigh">4</div>
+        <div class="stat-l">High Priority</div>
+      </div>
+    </div>
+
+    <div class="hdr-clock" id="clock">--:--:-- Z</div>
+  </header>
+
+  <!-- FILTER BAR -->
+  <div class="fbar" id="fbar">
+    <span class="fbar-label">Layers</span>
+    <button class="fbtn on" data-f="naval"    onclick="toggleF(this)">Naval</button>
+    <button class="fbtn on" data-f="intel"    onclick="toggleF(this)">Intel</button>
+    <button class="fbtn on" data-f="tanker"   onclick="toggleF(this)">Tanker</button>
+    <button class="fbtn on" data-f="shadow"   onclick="toggleF(this)">Shadow Fleet</button>
+    <button class="fbtn on" data-f="research" onclick="toggleF(this)">Research</button>
+    <div class="fbar-sep"></div>
+    <button class="fbtn on" data-f="incident" onclick="toggleF(this)">Incidents</button>
+    <button class="fbtn on" data-f="tracks"   onclick="toggleF(this)">Tracks</button>
+  </div>
+
+  <!-- BODY -->
+  <div class="body">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sb-tabs">
+        <div class="sb-tab active" id="tab-ships"     onclick="showTab('ships')">Vessels (6)</div>
+        <div class="sb-tab"        id="tab-incidents" onclick="showTab('incidents')">Incidents (7)</div>
+      </div>
+      <div class="sb-body" id="panel-ships"></div>
+      <div class="sb-body" id="panel-incidents" style="display:none"></div>
+    </aside>
+
+    <!-- MAP -->
+    <div class="map-wrap">
+      <button class="sb-toggle" id="sbBtn" onclick="toggleSidebar()" title="Toggle panel">☰</button>
+      <div id="map"></div>
+    </div>
+
+  </div>
+
+  <!-- STATUS BAR -->
+  <footer class="statusbar">
+    <span>CLASSIFICATION: UNCLASSIFIED // FOR OFFICIAL USE ONLY</span>
+    <div class="statusbar-r">
+      <span id="coordBar">LAT: — LON: —</span>
+      <span id="clockBar">—</span>
+    </div>
+  </footer>
+
+</div><!-- /app -->
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ═══════════════════════════════════════════════════════
+//  DATA
+// ═══════════════════════════════════════════════════════
+
+const SHIPS = [
+  {
+    id: 'gorshkov',
+    name: 'ADMIRAL GORSHKOV',
+    type: 'naval',
+    mmsi: '273311600',
+    callSign: 'UCVG',
+    speed: '18.4 kts',
+    heading: '247°',
+    status: 'active',
+    lastSeen: '6 min ago',
+    area: 'Northern North Sea',
+    description: 'Project 22350 Gorshkov-class guided missile frigate. Armed with Kalibr cruise missiles (range 2,500 km) and Zircon hypersonic missiles. Lead ship of the class, flagship of the Northern Fleet.',
+    alert: 'Operating 38nm from Nord Stream pipeline route — pattern matches infrastructure survey',
+    alertLevel: 'high',
+    track: [
+      [69.07, 33.08], [71.0, 28.0], [70.2, 22.0], [68.5, 15.0],
+      [65.0,  8.5],   [62.0,  4.0], [60.5,  2.0], [58.8,  0.8],
+      [57.5,  1.2],   [56.4,  2.8]
+    ],
+    pos: [56.4, 2.8]
+  },
+  {
+    id: 'primorye',
+    name: 'PRIMORYE (AGI)',
+    type: 'intel',
+    mmsi: '273354980',
+    callSign: 'UBWT',
+    speed: '0.9 kts',
+    heading: '188°',
+    status: 'active',
+    lastSeen: '2 min ago',
+    area: 'Central Baltic Sea',
+    description: 'Intelligence gathering vessel (razvedchik). Equipped with SIGINT/ELINT arrays, hydrophone systems, and communications intercept packages. Monitors NATO exercise communications and submarine movements.',
+    alert: 'Loitering 2.1nm above EstLink-2 cable route — 8+ hour dwell time',
+    alertLevel: 'high',
+    track: [
+      [54.71, 20.51], [55.4, 19.2], [56.3, 18.4], [57.2, 18.0],
+      [57.9, 18.6],   [58.4, 19.2], [58.8, 20.0], [58.5, 20.4]
+    ],
+    pos: [58.5, 20.4]
+  },
+  {
+    id: 'yenisei',
+    name: 'YENISEI',
+    type: 'tanker',
+    mmsi: '273519640',
+    callSign: 'UCQM',
+    speed: '12.1 kts',
+    heading: '124°',
+    status: 'active',
+    lastSeen: '9 min ago',
+    area: 'Eastern Mediterranean',
+    description: 'Aframax crude tanker (109,000 DWT). Suspected sanctions evasion route — transporting Russian Urals crude blend. Vessel has history of AIS manipulation and ship-to-ship transfers in international waters.',
+    alert: '6-hour AIS gap detected near Bosphorus — suspected ship-to-ship transfer en route',
+    alertLevel: 'medium',
+    track: [
+      [44.72, 37.77], [43.5, 36.0], [42.1, 34.0], [41.2, 29.8],
+      [40.5, 27.2],   [39.5, 25.6], [38.2, 24.0], [36.6, 23.2],
+      [35.5, 27.0],   [35.0, 31.0], [34.5, 34.8]
+    ],
+    pos: [34.5, 34.8]
+  },
+  {
+    id: 'ustluga',
+    name: 'UST-LUGA',
+    type: 'shadow',
+    mmsi: '304010916',
+    callSign: 'V2QE9',
+    speed: '0.0 kts',
+    heading: 'DARK',
+    status: 'dark',
+    lastSeen: '47 hrs ago (AIS)',
+    area: 'Kattegat / Skagerrak',
+    description: 'Shadow fleet crude tanker operating under Antigua & Barbuda flag of convenience. Frequently disables AIS transponder. Previously sanctioned operator. Regular Primorsk-to-Rotterdam route used for Urals crude exports.',
+    alert: 'DARK 47 hrs — last confirmed position Kattegat via SAR satellite. Infrastructure alert.',
+    alertLevel: 'high',
+    track: [
+      [59.9, 28.7],  [60.0, 27.0], [59.4, 24.2], [58.8, 22.0],
+      [58.2, 19.5],  [57.5, 17.2], [56.5, 14.8], [56.0, 12.4],
+      [57.1, 10.2],  [57.6, 10.6]
+    ],
+    pos: [57.6, 10.6]
+  },
+  {
+    id: 'pashin',
+    name: 'AKADEMIK PASHIN',
+    type: 'naval',
+    mmsi: '273350660',
+    callSign: 'UCPD',
+    speed: '14.8 kts',
+    heading: '104°',
+    status: 'active',
+    lastSeen: '1 min ago',
+    area: 'Strait of Gibraltar',
+    description: 'Project 23130 fleet replenishment oiler. Supports extended Russian naval deployments in the Mediterranean. Can supply fuel, provisions, and ammunition to up to 6 warships simultaneously.',
+    alert: 'Transiting Gibraltar westbound — AIS ID mismatch flagged (spoofing suspected near Algeciras)',
+    alertLevel: 'medium',
+    track: [
+      [68.9, 33.0],  [65.0, 25.0], [61.0, 15.0], [57.0, 9.0],
+      [53.0,  7.5],  [49.0,  6.0], [46.0,  4.5], [43.0,  2.0],
+      [40.5, -0.5],  [38.0, -3.2], [36.4, -5.0]
+    ],
+    pos: [36.4, -5.0]
+  },
+  {
+    id: 'papanin',
+    name: 'IVAN PAPANIN',
+    type: 'research',
+    mmsi: '273354700',
+    callSign: 'UBCT',
+    speed: '10.8 kts',
+    heading: '022°',
+    status: 'active',
+    lastSeen: '4 min ago',
+    area: 'Svalbard Archipelago',
+    description: 'Project 23550 patrol icebreaker — dual-use military/civilian. Classified as "research vessel" for UNCLOS purposes but carries armament and military crew. Monitors NATO Arctic infrastructure and submarine transit routes.',
+    alert: 'Operating in Svalbard EEZ — monitoring NATO Exercise Cold Response area',
+    alertLevel: 'medium',
+    track: [
+      [64.54, 40.54], [67.0, 38.0], [69.5, 35.0], [71.5, 30.0],
+      [73.5, 25.0],   [75.0, 21.0], [76.5, 18.0], [78.0, 15.5], [78.3, 15.8]
+    ],
+    pos: [78.3, 15.8]
+  }
+];
+
+const INCIDENTS = [
+  {
+    id: 'i1',
+    title: 'AIS Blackout — Nord Stream Corridor',
+    type: 'ais-blackout', priority: 'high',
+    time: '2026-05-23 08:14Z',
+    lat: 57.8, lng: 10.2,
+    vessel: 'UST-LUGA',
+    desc: 'Vessel disabled AIS transponder while transiting directly over the former Nord Stream pipeline route. 47-hour blackout. SAR satellite imagery confirms vessel remained in area. Pattern matches known Russian infrastructure reconnaissance operations.',
+    details: [['Duration','47 hours'],['Method','AIS disabled'],['Vessel','UST-LUGA'],['SAR Confirmed','Yes'],['Coord','57°48\'N 10°12\'E']]
+  },
+  {
+    id: 'i2',
+    title: 'Ship-to-Ship Transfer — Black Sea',
+    type: 'sts-transfer', priority: 'high',
+    time: '2026-05-22 16:45Z',
+    lat: 43.2, lng: 31.5,
+    vessel: 'YENISEI',
+    desc: 'YENISEI conducted 4.5-hour STS (ship-to-ship) transfer with unidentified vessel (possibly MIKHAIL NENASHEV) in international waters. Suspected sanctions evasion — transfer of Russian Urals crude to avoid EU port prohibitions. Estimated 80,000 barrels transferred.',
+    details: [['Duration','4.5 hours'],['Cargo','Urals crude ~80k bbl'],['Counterpart','Unidentified (no AIS)'],['Coord','43°12\'N 31°30\'E']]
+  },
+  {
+    id: 'i3',
+    title: 'Submarine Cable Proximity — EstLink-2',
+    type: 'cable-proximity', priority: 'high',
+    time: '2026-05-23 11:28Z',
+    lat: 57.5, lng: 19.5,
+    vessel: 'PRIMORYE (AGI)',
+    desc: 'PRIMORYE detected loitering at very low speed (0.9 kts) directly over the EstLink-2 submarine power cable connecting Finland and Estonia. 8+ hour dwell time with no declared activity. Pattern is consistent with cable survey or pre-positioning for infrastructure attack.',
+    details: [['Duration','8+ hours'],['Speed','0.9 kts'],['Cable','EstLink-2 (1000 MW)'],['Depth','~80m'],['Coord','57°30\'N 19°30\'E']]
+  },
+  {
+    id: 'i4',
+    title: 'GPS Spoofing Event — Black Sea',
+    type: 'gps-spoofing', priority: 'medium',
+    time: '2026-05-22 09:30Z',
+    lat: 44.1, lng: 38.6,
+    vessel: 'Multiple vessels',
+    desc: 'GPS spoofing event affecting 14 commercial vessels near Novorossiysk port area. Vessels reported false positions within 20nm radius. False position cluster centered on inland location 8nm from actual vessel positions. Consistent with Russian military GPS jamming/spoofing pattern observed since 2019.',
+    details: [['Vessels affected','14 commercial'],['Radius','~20nm'],['Duration','3.2 hours'],['False offset','8nm east'],['Coord','44°06\'N 38°36\'E']]
+  },
+  {
+    id: 'i5',
+    title: 'Approach to NATO Naval Facility — Kiel',
+    type: 'port-approach', priority: 'medium',
+    time: '2026-05-21 19:15Z',
+    lat: 54.32, lng: 10.15,
+    vessel: 'ADMIRAL GORSHKOV',
+    desc: 'Russian naval frigate conducted close approach to the entrance of Kiel Canal — primary NATO naval access route. No radio communication established. Vessel loitered 3.2nm from port entrance for 2 hours. German Navy frigate FGS Hessen dispatched to shadow. Vessel departed without incident.',
+    details: [['Distance','3.2nm'],['Duration','2 hours'],['Response','FGS Hessen dispatched'],['Outcome','Departed without incident'],['Coord','54°19\'N 10°09\'E']]
+  },
+  {
+    id: 'i6',
+    title: 'Dark Vessel — SAR Detection, Mediterranean',
+    type: 'dark-vessel', priority: 'high',
+    time: '2026-05-23 06:02Z',
+    lat: 37.2, lng: 13.8,
+    vessel: 'UNKNOWN (unregistered)',
+    desc: 'Unidentified large vessel detected by Sentinel-1 SAR satellite imagery with no AIS signal. Size consistent with VLCC-class tanker (est. 280m LOA). Course 165° toward Libyan coast. No match found in any vessel registry. Possible deregistered or renamed shadow fleet asset.',
+    details: [['Detection','Sentinel-1 SAR'],['AIS','None'],['Size','~280m LOA'],['Course','165° (Libya)'],['Coord','37°12\'N 13°48\'E']]
+  },
+  {
+    id: 'i7',
+    title: 'AIS Identity Spoofing — Gibraltar Strait',
+    type: 'ais-spoofing', priority: 'medium',
+    time: '2026-05-22 23:17Z',
+    lat: 36.05, lng: -5.35,
+    vessel: 'AKADEMIK PASHIN',
+    desc: 'Vessel transmitting AIS signal with MMSI 257990000 — belonging to decommissioned Norwegian research vessel LANCE. Satellite track confirms actual vessel is Russian navy oiler AKADEMIK PASHIN. Likely identity masking to avoid NATO vessel monitoring systems at Gibraltar chokepoint.',
+    details: [['False MMSI','257990000 (LANCE)'],['Actual vessel','AKADEMIK PASHIN'],['Location','Strait of Gibraltar'],['Flag spoofed','Norwegian'],['Coord','36°03\'N 05°21\'W']]
+  }
+];
+
+// ═══════════════════════════════════════════════════════
+//  CONSTANTS
+// ═══════════════════════════════════════════════════════
+
+const COLORS = {
+  naval:'#ff3b3b', intel:'#b06aff', tanker:'#ff8c00',
+  shadow:'#ffd700', research:'#22d3ee'
+};
+const PCOL = { high:'#ff3b3b', medium:'#ff8c00', low:'#ffd700' };
+
+// ═══════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════
+
+let map;
+const layers = {
+  shipMk:{}, trackLn:{}, incMk:{},
+  groups:{}
+};
+const vis = {
+  naval:true, intel:true, tanker:true, shadow:true, research:true, incident:true, tracks:true
+};
+
+// ═══════════════════════════════════════════════════════
+//  MAP INIT
+// ═══════════════════════════════════════════════════════
+
+function initMap() {
+  map = L.map('map', {
+    center: [57, 12],
+    zoom: 5,
+    zoomControl: false,
+    attributionControl: false,
+    tap: true
+  });
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    maxZoom: 18, minZoom: 2,
+    attribution: '© CEFC FIRST ALERT | © CartoDB | © OSM'
+  }).addTo(map);
+
+  L.control.attribution({ prefix: '© FIRST ALERT | © CartoDB | © OSM', position: 'bottomleft' }).addTo(map);
+  L.control.zoom({ position: 'bottomright' }).addTo(map);
+
+  map.on('mousemove', e => {
+    document.getElementById('coordBar').textContent =
+      `LAT: ${e.latlng.lat.toFixed(4)}°  LON: ${e.latlng.lng.toFixed(4)}°`;
+  });
+
+  SHIPS.forEach(addShip);
+  INCIDENTS.forEach(addIncident);
+}
+
+// ═══════════════════════════════════════════════════════
+//  SHIP MARKER
+// ═══════════════════════════════════════════════════════
+
+function shipHeading(ship) {
+  const t = ship.track;
+  if (t.length < 2) return 0;
+  const [a, b] = [t[t.length - 2], t[t.length - 1]];
+  return Math.atan2(b[1] - a[1], b[0] - a[0]) * 180 / Math.PI - 90;
+}
+
+function shipIconHtml(ship) {
+  const c = COLORS[ship.type];
+  const h = shipHeading(ship);
+  const isDark = ship.status === 'dark';
+  const isAnch = ship.status === 'anchored';
+  return `
+    <svg width="36" height="36" viewBox="-18 -18 36 36" xmlns="http://www.w3.org/2000/svg">
+      <g transform="rotate(${h})">
+        <polygon points="0,-13 7,9 0,5 -7,9"
+          fill="${c}" opacity="${isDark ? 0.45 : 1}"
+          stroke="${isDark ? '#ff3b3b' : isAnch ? '#ffd700' : 'rgba(255,255,255,0.6)'}"
+          stroke-width="${isDark || isAnch ? 1.5 : 0.7}"/>
+      </g>
+      ${isDark ? `<circle cx="0" cy="0" r="16" fill="none" stroke="#ff3b3b" stroke-width="1.2"
+        stroke-dasharray="3,3" opacity=".75"/>` : ''}
+      ${isAnch ? `<text x="0" y="4" text-anchor="middle" font-size="9" fill="#ffd700">⚓</text>` : ''}
+    </svg>`;
+}
+
+function buildShipTooltip(ship) {
+  const ac = COLORS[ship.type];
+  const rows = [
+    ['Type',     ship.type.toUpperCase()],
+    ['MMSI',     ship.mmsi],
+    ['Call Sign',ship.callSign],
+    ['Speed',    ship.speed],
+    ['Heading',  ship.heading],
+    ['Area',     ship.area],
+    ['Last AIS', ship.lastSeen]
+  ].map(([l,v]) => `<div class="ctip-row"><span class="ctip-lbl">${l}:</span><span class="ctip-val">${v}</span></div>`).join('');
+  const alert = ship.alert
+    ? `<div class="ctip-alert ${ship.alertLevel}">⚠ ${ship.alert}</div>` : '';
+  return `
+    <div style="min-width:230px">
+      <div class="ctip-title" style="color:${ac}">▶ ${ship.name}</div>
+      ${rows}
+      <hr class="ctip-hr">
+      <div class="ctip-desc">${ship.description}</div>
+      ${alert}
+    </div>`;
+}
+
+function addShip(ship) {
+  // track
+  const track = L.polyline(ship.track, {
+    color: COLORS[ship.type], weight: 1.5, opacity: 0.45, dashArray: '5,5'
+  }).addTo(map);
+  layers.trackLn[ship.id] = track;
+
+  // marker
+  const icon = L.divIcon({ html: shipIconHtml(ship), className: 'ship-icon', iconSize: [36,36], iconAnchor: [18,18] });
+  const mk = L.marker(ship.pos, { icon })
+    .addTo(map)
+    .bindTooltip(buildShipTooltip(ship), {
+      className: 'ctip', permanent: false, sticky: false, offset: [18, 0], opacity: 1
+    });
+  mk.on('click', () => focusShip(ship.id));
+  layers.shipMk[ship.id] = mk;
+}
+
+// ═══════════════════════════════════════════════════════
+//  INCIDENT MARKER
+// ═══════════════════════════════════════════════════════
+
+function incIconHtml(incident) {
+  const c = PCOL[incident.priority];
+  return `
+    <div style="position:relative;width:30px;height:30px">
+      <div class="inc-ring" style="width:30px;height:30px;top:0;left:0;border:2px solid ${c};animation-delay:0s;"></div>
+      <div class="inc-ring" style="width:30px;height:30px;top:0;left:0;border:2px solid ${c};animation-delay:.8s;"></div>
+      <svg width="30" height="30" viewBox="-15 -15 30 30" style="position:absolute;top:0;left:0">
+        <circle cx="0" cy="0" r="8"  fill="${c}" opacity=".25"/>
+        <circle cx="0" cy="0" r="5"  fill="${c}" opacity=".65"/>
+        <circle cx="0" cy="0" r="2.5" fill="${c}"/>
+      </svg>
+    </div>`;
+}
+
+function buildIncTooltip(inc) {
+  const c = PCOL[inc.priority];
+  const rows = inc.details
+    .map(([l,v]) => `<div class="ctip-row"><span class="ctip-lbl">${l}:</span><span class="ctip-val">${v}</span></div>`)
+    .join('');
+  return `
+    <div style="min-width:250px">
+      <div class="ctip-title" style="color:${c}">⚠ ${inc.title}</div>
+      <div class="ctip-row"><span class="ctip-lbl">Time:</span><span class="ctip-val">${inc.time}</span></div>
+      <div class="ctip-row"><span class="ctip-lbl">Vessel:</span><span class="ctip-val">${inc.vessel}</span></div>
+      <div class="ctip-row"><span class="ctip-lbl">Priority:</span>
+        <span class="ctip-val" style="color:${c};font-weight:700">${inc.priority.toUpperCase()}</span></div>
+      <hr class="ctip-hr">
+      ${rows}
+      <hr class="ctip-hr">
+      <div class="ctip-desc">${inc.desc}</div>
+    </div>`;
+}
+
+function addIncident(inc) {
+  const icon = L.divIcon({ html: incIconHtml(inc), className: 'inc-icon', iconSize:[30,30], iconAnchor:[15,15] });
+  const mk = L.marker([inc.lat, inc.lng], { icon })
+    .addTo(map)
+    .bindTooltip(buildIncTooltip(inc), {
+      className: 'ctip', permanent: false, sticky: false, offset: [16, 0], opacity: 1
+    });
+  mk.on('click', () => focusIncident(inc.id));
+  layers.incMk[inc.id] = mk;
+}
+
+// ═══════════════════════════════════════════════════════
+//  SIDEBAR RENDERING
+// ═══════════════════════════════════════════════════════
+
+function renderShips() {
+  document.getElementById('panel-ships').innerHTML = SHIPS.map(s => `
+    <div class="scard ${s.type}" id="sc-${s.id}" onclick="focusShip('${s.id}')">
+      <div class="scard-name">${s.name}</div>
+      <span class="badge badge-${s.type}">${s.type}</span>
+      <div class="scard-meta">
+        <span class="ml">MMSI</span><span>${s.mmsi}</span>
+        <span class="ml">Speed</span><span>${s.speed}</span>
+        <span class="ml">Area</span><span>${s.area}</span>
+        <span class="ml">Last AIS</span><span>${s.lastSeen}</span>
+      </div>
+      <div class="scard-status">
+        <div class="sdot ${s.status}"></div>
+        <span>${s.status.toUpperCase()} — ${s.heading}</span>
+      </div>
+      ${s.alert ? `<div class="alert-strip ${s.alertLevel}">⚠ ${s.alert}</div>` : ''}
+    </div>`).join('');
+}
+
+function renderIncidents() {
+  document.getElementById('panel-incidents').innerHTML = INCIDENTS.map(i => `
+    <div class="icard ${i.priority}" id="ic-${i.id}" onclick="focusIncident('${i.id}')">
+      <span class="badge badge-${i.priority}">${i.priority} priority</span>
+      <div class="icard-title">${i.title}</div>
+      <div class="icard-time">${i.time} · ${i.vessel}</div>
+      <div class="icard-desc">${i.desc.substring(0,110)}…</div>
+    </div>`).join('');
+}
+
+// ═══════════════════════════════════════════════════════
+//  INTERACTIONS
+// ═══════════════════════════════════════════════════════
+
+function focusShip(id) {
+  const s = SHIPS.find(x => x.id === id);
+  if (!s) return;
+  map.flyTo(s.pos, 7, { duration: 1.0 });
+  setTimeout(() => layers.shipMk[id]?.openTooltip(), 1100);
+  showTab('ships');
+  document.querySelectorAll('.scard').forEach(el => el.classList.remove('sel'));
+  const el = document.getElementById(`sc-${id}`);
+  el?.classList.add('sel');
+  el?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  // On mobile, close sidebar after selection
+  if (window.innerWidth <= 900) closeSidebar();
+}
+
+function focusIncident(id) {
+  const i = INCIDENTS.find(x => x.id === id);
+  if (!i) return;
+  map.flyTo([i.lat, i.lng], 8, { duration: 1.0 });
+  setTimeout(() => layers.incMk[id]?.openTooltip(), 1100);
+  showTab('incidents');
+  document.getElementById(`ic-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  if (window.innerWidth <= 900) closeSidebar();
+}
+
+function showTab(which) {
+  document.getElementById('tab-ships').classList.toggle('active', which === 'ships');
+  document.getElementById('tab-incidents').classList.toggle('active', which === 'incidents');
+  document.getElementById('panel-ships').style.display     = which === 'ships' ? '' : 'none';
+  document.getElementById('panel-incidents').style.display = which === 'incidents' ? '' : 'none';
+}
+
+// ═══════════════════════════════════════════════════════
+//  FILTERS
+// ═══════════════════════════════════════════════════════
+
+function toggleF(btn) {
+  const f = btn.dataset.f;
+  vis[f] = !vis[f];
+  btn.classList.toggle('on', vis[f]);
+
+  if (f === 'tracks') {
+    SHIPS.forEach(s => {
+      const ln = layers.trackLn[s.id];
+      if (!ln) return;
+      if (vis.tracks && vis[s.type]) ln.addTo(map); else map.removeLayer(ln);
+    });
+    return;
+  }
+
+  if (f === 'incident') {
+    INCIDENTS.forEach(i => {
+      const mk = layers.incMk[i.id];
+      if (!mk) return;
+      if (vis.incident) mk.addTo(map); else map.removeLayer(mk);
+    });
+    return;
+  }
+
+  // ship type filter
+  SHIPS.filter(s => s.type === f).forEach(s => {
+    const mk = layers.shipMk[s.id], ln = layers.trackLn[s.id];
+    if (vis[f]) {
+      if (mk) mk.addTo(map);
+      if (ln && vis.tracks) ln.addTo(map);
+    } else {
+      if (mk) map.removeLayer(mk);
+      if (ln) map.removeLayer(ln);
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  SIDEBAR TOGGLE
+// ═══════════════════════════════════════════════════════
+
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+}
+
+// ═══════════════════════════════════════════════════════
+//  LIVE SIMULATION  (minor position drift for active vessels)
+// ═══════════════════════════════════════════════════════
+
+function driftShips() {
+  SHIPS.filter(s => s.status === 'active').forEach(s => {
+    const rad = Math.atan2(
+      s.track[s.track.length-1][1] - s.track[s.track.length-2][1],
+      s.track[s.track.length-1][0] - s.track[s.track.length-2][0]
+    );
+    const spd = parseFloat(s.speed) || 10;
+    const step = spd * 0.0000015;
+    s.pos[0] += Math.sin(rad) * step + (Math.random() - 0.5) * 0.0008;
+    s.pos[1] += Math.cos(rad) * step + (Math.random() - 0.5) * 0.0008;
+    layers.shipMk[s.id]?.setLatLng(s.pos);
+  });
+}
+
+// ═══════════════════════════════════════════════════════
+//  CLOCK
+// ═══════════════════════════════════════════════════════
+
+function updateClock() {
+  const z = new Date().toISOString().replace('T',' ').substring(0,19) + 'Z';
+  document.getElementById('clock').textContent = z;
+  document.getElementById('clockBar').textContent = z;
+}
+
+// ═══════════════════════════════════════════════════════
+//  LOADER SEQUENCE
+// ═══════════════════════════════════════════════════════
+
+function runLoader() {
+  const items = ['li1','li2','li3','li4'];
+  const delays = [400, 700, 1000, 1300];
+  items.forEach((id, i) => {
+    setTimeout(() => document.getElementById(id)?.classList.add('done'), delays[i]);
+  });
+  setTimeout(() => {
+    const el = document.getElementById('loader');
+    el.style.opacity = '0';
+    setTimeout(() => el.remove(), 500);
+  }, 1700);
+}
+
+// ═══════════════════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════════════════
+
+window.addEventListener('load', () => {
+  renderShips();
+  renderIncidents();
+  runLoader();
+
+  // small delay to let the loader display before map init
+  setTimeout(() => {
+    initMap();
+    updateClock();
+    setInterval(updateClock, 1000);
+    setInterval(driftShips, 4000);
+  }, 300);
+});
+</script>
+</body>
+</html>
